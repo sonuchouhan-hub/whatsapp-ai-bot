@@ -9,7 +9,6 @@ app.use(express.json());
 
 /* =========================
    1️⃣ WEBHOOK VERIFICATION
-   (Only if your provider uses it)
 ========================= */
 app.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
@@ -28,13 +27,12 @@ app.get("/webhook", (req, res) => {
 
 /* =========================
    2️⃣ SEND WHATSAPP MESSAGE
-   (WABA Chat API)
 ========================= */
 async function sendWhatsAppMessage(to, text) {
   const response = await axios.post(
     `${process.env.WHATSAPP_BASE_URL}/chat/messages`,
     {
-      to: to,
+      to,
       type: "text",
       text: {
         body: text
@@ -54,13 +52,12 @@ async function sendWhatsAppMessage(to, text) {
 }
 
 /* =========================
-   3️⃣ TEST ROUTE (IMPORTANT)
-   Use this to confirm API works
+   3️⃣ TEST ROUTE (OPTIONAL)
 ========================= */
 app.get("/test-send", async (req, res) => {
   try {
     await sendWhatsAppMessage(
-      "918269579135", // 🔁 REPLACE with your WhatsApp number (country code + number)
+      "918269579135", // replace with your number for testing
       "✅ Test message from Dhanshri Infrabulls bot"
     );
     res.send("Message sent successfully");
@@ -72,29 +69,37 @@ app.get("/test-send", async (req, res) => {
 
 /* =========================
    4️⃣ INCOMING MESSAGES
-   (Webhook from WABA Chat)
+   (AUTO-REPLY LOGIC)
 ========================= */
 app.post("/webhook", async (req, res) => {
-  console.log("📩 Incoming webhook:");
-  console.log(JSON.stringify(req.body, null, 2));
-
   try {
-    // This covers most WABA Chat message formats
+    console.log("📩 Incoming webhook:");
+    console.log(JSON.stringify(req.body, null, 2));
+
     const message =
       req.body?.messages?.[0] ||
       req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    if (message) {
-      const from = message.from || message.phone;
-      const text = message.text?.body || message.text;
+    if (!message) {
+      return res.sendStatus(200);
+    }
 
-      console.log("From:", from);
-      console.log("Text:", text);
+    const from = message.from || message.phone;
+    const text = message.text?.body?.toLowerCase() || "";
 
-      // Auto-reply
+    console.log("From:", from);
+    console.log("Text:", text);
+
+    // ✅ AUTO-REPLY LOGIC
+    if (text === "hi" || text === "hello") {
       await sendWhatsAppMessage(
         from,
-        "Welcome to Dhanshri Infrabulls 👋\nMay I know your name?"
+        "👋 *Welcome to Dhanshri Infrabulls*\n\nPlease share:\n1️⃣ Budget\n2️⃣ Location\n3️⃣ Purpose (Investment / Home)"
+      );
+    } else {
+      await sendWhatsAppMessage(
+        from,
+        "Thank you for your message 🙏\nOur team will assist you shortly."
       );
     }
 
