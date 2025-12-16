@@ -8,110 +8,107 @@ const app = express();
 app.use(express.json());
 
 /* =========================
-   1️⃣ WEBHOOK VERIFICATION
+   ROOT ROUTE (FIX Cannot GET /)
 ========================= */
-app.get("/webhook", (req, res) => {
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ Webhook verified");
-    return res.status(200).send(challenge);
-  }
-
-  return res.sendStatus(403);
+app.get("/", (req, res) => {
+  res.send("WhatsApp AI Bot is running 🚀");
 });
 
 /* =========================
-   2️⃣ SEND WHATSAPP MESSAGE
-========================= */
-async function sendWhatsAppMessage(to, text) {
-  const response = await axios.post(
-    `${process.env.WHATSAPP_BASE_URL}/chat/messages`,
-    {
-      to,
-      type: "text",
-      text: {
-        body: text
-      }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`,
-        "X-MYOP-COMPANY-ID": process.env.COMPANY_ID,
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      }
-    }
-  );
-
-  return response.data;
-}
-
-/* =========================
-   3️⃣ TEST ROUTE (OPTIONAL)
-========================= */
-app.get("/test-send", async (req, res) => {
-  try {
-    await sendWhatsAppMessage(
-      "918269579135", // replace with your number for testing
-      "✅ Test message from Dhanshri Infrabulls bot"
-    );
-    res.send("Message sent successfully");
-  } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).send("Failed to send message");
-  }
-});
-
-/* =========================
-   4️⃣ INCOMING MESSAGES
-   (AUTO-REPLY LOGIC)
+   WEBHOOK (MYOPERATOR)
 ========================= */
 app.post("/webhook", async (req, res) => {
   try {
-    console.log("📩 Incoming webhook:");
-    console.log(JSON.stringify(req.body, null, 2));
+    const payload = req.body;
 
-    const message =
-      req.body?.messages?.[0] ||
-      req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-
-    if (!message) {
+    // ✅ IMPORTANT: Ignore sent/delivered/read events
+    if (payload?.data?.action !== "incoming") {
       return res.sendStatus(200);
     }
 
-    const from = message.from || message.phone;
-    const text = message.text?.body?.toLowerCase() || "";
+    const userMessage =
+      payload?.data?.data?.context?.body;
 
-    console.log("From:", from);
-    console.log("Text:", text);
+    const userNumber =
+      payload?.data?.conversation?.customer_contact;
 
-    // ✅ AUTO-REPLY LOGIC
-    if (text === "hi" || text === "hello") {
-      await sendWhatsAppMessage(
-        from,
-        "👋 *Welcome to Dhanshri Infrabulls*\n\nPlease share:\n1️⃣ Budget\n2️⃣ Location\n3️⃣ Purpose (Investment / Home)"
-      );
-    } else {
-      await sendWhatsAppMessage(
-        from,
-        "Thank you for your message 🙏\nOur team will assist you shortly."
-      );
+    if (!userMessage || !userNumber) {
+      return res.sendStatus(200);
     }
+
+    console.log("📩 Incoming:", userMessage);
+    console.log("👤 From:", userNumber);
+
+    let reply = "";
+
+    const text = userMessage.toLowerCase();
+
+    // 👋 Greeting
+    if (text.includes("hi") || text.includes("hello")) {
+      reply =
+        "👋 Welcome to *Dhanshri Infrabulls*\n\n" +
+        "Please share your budget:\n" +
+        "👉 Below 20 Lakh\n👉 20–30 Lakh\n👉 Above 30 Lakh";
+    }
+
+    // 💰 Budget
+    else if (text.includes("lakh") || text.includes("20") || text.includes("30")) {
+      reply =
+        "Great 👍\n" +
+        "Please select your preferred location:\n" +
+        "📍 Rau\n📍 Indore\n📍 Mhow\n📍 Pithampur";
+    }
+
+    // 📍 Location
+    else if (
+      text.includes("rau") ||
+      text.includes("indore") ||
+      text.includes("mhow") ||
+      text.includes("pithampur")
+    ) {
+      reply =
+        "Perfect ✅\n" +
+        "Our sales team will contact you shortly.\n\n" +
+        "Reply *CALL* for callback or *VISIT* for site visit.";
+    }
+
+    // 🔁 Fallback
+    else {
+      reply =
+        "Thank you for your message 😊\n" +
+        "Please reply with your *Budget* or *Location*.";
+    }
+
+    await sendWhatsAppMessage(userNumber, reply);
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("Webhook error:", err.response?.data || err.message);
+    console.error("Webhook Error:", err.message);
     res.sendStatus(500);
   }
 });
 
 /* =========================
-   5️⃣ START SERVER
+   SEND MESSAGE (MYOPERATOR)
+========================= */
+async function sendWhatsAppMessage(number, message) {
+  await axios.post(
+    process.env.MYOPERATOR_SEND_API, // ✅ exact URL from MyOperator
+    {
+      number: number,
+      message: message
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.MYOPERATOR_API_KEY}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+}
+
+/* =========================
+   START SERVER
 ========================= */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
